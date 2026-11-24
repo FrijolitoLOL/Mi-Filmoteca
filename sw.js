@@ -1,6 +1,6 @@
 /* Solo archivos públicos. Nunca se cachean las películas, credenciales ni API. */
-const CACHE = 'mi-filmoteca-shell-v2-google';
-const SHELL = ['./','./index.html','./styles.css','./app.js','./config.js','./manifest.webmanifest','./assets/icon-192.png','./assets/icon-512.png'];
+const CACHE = 'mi-filmoteca-shell-v6-social';
+const SHELL = ['./','./index.html','./styles.css','./app.js','./config.js','./manifest.webmanifest','./assets/icon-192.png','./assets/icon-512.png','./assets/icon-maskable-512.png','./assets/icon-180.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()).catch(()=>{}));
 });
