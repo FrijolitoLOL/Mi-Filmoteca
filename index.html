@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0d1018" />
+  <meta name="description" content="Tu filmoteca personal. Guarda las películas que viste y las que quieres ver, desde cualquier dispositivo." />
+  <title>Mi Filmoteca · Tu cine, tu historia</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./assets/icon-192.png" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="./config.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+<div id="toast" role="status" aria-live="polite" class="toast" hidden></div>
+<div id="setup-view" class="center-view" hidden>
+  <div class="setup-card">
+    <div class="logo-icon">◈</div>
+    <p class="eyebrow">CONFIGURACIÓN INICIAL</p>
+    <h1>Conecta Mi Filmoteca</h1>
+    <p>Esta copia todavía necesita los datos públicos de tu proyecto Supabase. Revisa el archivo <code>config.js</code> y la guía <code>README.md</code> incluida.</p>
+    <div class="notice-box">Solo pega la <strong>Project URL</strong> y la <strong>Publishable key</strong>. No publiques el token de TMDB ni claves secretas.</div>
+  </div>
+</div>
+<div id="auth-view" class="center-view" hidden>
+  <div class="auth-side">
+    <div class="logo-line"><span class="logo-icon">◈</span><strong>Mi Filmoteca</strong></div>
+    <p class="eyebrow">TU HISTORIA EN EL CINE</p>
+    <h1>Todo lo que has visto.<br><em>Todo lo que verás.</em></h1>
+    <p>Una colección personal para recordar películas, descubrir otras y compartir la experiencia con amigos. Cada cuenta tiene su propia filmoteca.</p>
+    <div class="auth-highlight">🎞️ &nbsp;Tu colección se sincroniza entre computadora y celular.</div>
+  </div>
+  <div class="auth-card">
+    <div class="auth-toggle"><button class="selected" id="tab-signin" type="button">Iniciar sesión</button><button id="tab-signup" type="button">Crear cuenta</button></div>
+    <h2 id="auth-title">Bienvenido de nuevo</h2>
+    <p class="muted" id="auth-hint">Continúa donde dejaste tu filmoteca.</p>
+    <button id="auth-google" class="google-auth-btn" type="button" aria-label="Continuar con Google">
+      <svg aria-hidden="true" viewBox="0 0 48 48" width="21" height="21" focusable="false">
+        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5Z"/>
+        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.3 5.48-4.84 7.18l7.73 6C44.34 38.03 46.98 31.89 46.98 24.55Z"/>
+        <path fill="#FBBC05" d="M10.53 28.59A14.4 14.4 0 0 1 9.75 24c0-1.59.27-3.13.76-4.59l-7.98-6.19A23.86 23.86 0 0 0 0 24c0 3.87.93 7.53 2.56 10.78l7.97-6.19Z"/>
+        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.91-5.8l-7.73-6c-2.15 1.45-4.92 2.3-8.18 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.97 6.19C6.51 42.62 14.62 48 24 48Z"/>
+      </svg>
+      <span>Continuar con Google</span>
+    </button>
+    <div class="auth-divider"><span>o con correo electrónico</span></div>
+    <form id="auth-form">
+      <label for="auth-email">Correo electrónico</label><input id="auth-email" type="email" placeholder="tu@correo.com" autocomplete="email" required />
+      <label for="auth-password">Contraseña</label><input id="auth-password" type="password" placeholder="Mínimo 6 caracteres" minlength="6" autocomplete="current-password" required />
+      <button id="auth-submit" class="btn primary full" type="submit">Entrar a mi filmoteca</button>
+    </form>
+    <button id="password-help" class="link-btn" type="button">¿Olvidaste tu contraseña?</button>
+    <p id="auth-message" class="form-message" role="status" aria-live="polite"></p>
+    <p class="auth-small">Tus películas son privadas: otras cuentas no pueden verlas ni modificarlas.</p>
+  </div>
+</div>
+<div id="app-view" class="shell" hidden>
+  <aside class="sidebar">
+    <div>
+      <div class="logo-line"><span class="logo-icon">◈</span><strong>Mi Filmoteca</strong></div>
+      <div class="brand-subtitle">La memoria de tus películas.</div>
+    </div>
+    <nav class="navigation" aria-label="Colección">
+      <button type="button" data-view="all" class="nav-btn selected"><span>▦</span> Mi colección</button>
+      <button type="button" data-view="seen" class="nav-btn"><span>✓</span> Películas vistas</button>
+      <button type="button" data-view="pending" class="nav-btn"><span>◷</span> Por ver</button>
+      <button type="button" data-view="home" class="nav-btn"><span>⌂</span> Vistas en casa</button>
+      <button type="button" data-view="cinema" class="nav-btn"><span>▣</span> Vistas en cine</button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="profile"><span class="avatar">◉</span><div class="profile-text"><strong>Mi cuenta</strong><span id="user-email">—</span></div></div>
+      <button id="signout" type="button" class="btn ghost full">Cerrar sesión</button>
+    </div>
+  </aside>
+  <main class="main-content">
+    <div class="top-line"><div class="eyebrow">MI FILMOTECA / <span id="view-label">MI COLECCIÓN</span></div><span class="connected-dot"><i></i> Sincronización en la nube</span></div>
+    <div class="hero"><div><h1>Tu cine, <em>tu historia.</em></h1><p>Una película a la vez, año tras año. Solo tú decides qué forma parte de tu colección.</p></div><button id="add-open" type="button" class="btn primary big">+ Añadir película</button></div>
+    <div class="stat-grid">
+      <div class="stat-card"><span>En tu colección</span><strong id="stat-all">0</strong><small>Películas registradas</small></div>
+      <div class="stat-card"><span>Vistas</span><strong id="stat-seen">0</strong><small>Terminadas</small></div>
+      <div class="stat-card"><span>Por ver</span><strong id="stat-pending">0</strong><small>Para más adelante</small></div>
+      <div class="stat-card"><span>Casa / Cine</span><strong id="stat-location">0 / 0</strong><small>Películas vistas</small></div>
+    </div>
+    <section class="content-section">
+      <div class="section-title"><div><h2 id="collection-title">Todas tus películas</h2><p id="collection-subtitle">Aquí aparecerán tus registros.</p></div><div class="view-switch"><button id="group-years" class="active" type="button">Por años</button><button id="group-genres" type="button">Por géneros</button></div></div>
+      <div class="filters"><label class="search-filter"><span aria-hidden="true">⌕</span><input id="filter-q" placeholder="Buscar entre tus películas…" autocomplete="off" aria-label="Buscar en mi filmoteca"></label><select id="filter-year" aria-label="Filtrar por año"><option value="all">Todos los años</option></select><select id="filter-genre" aria-label="Filtrar por género"><option value="all">Todos los géneros</option></select><select id="sort" aria-label="Ordenar películas"><option value="recent">Más recientes primero</option><option value="watch-old">Fecha vista: más antiguas</option><option value="release">Año de estreno</option><option value="az">Título A-Z</option></select></div>
+      <div id="loading" class="muted loading">Cargando tu filmoteca…</div>
+      <div id="collection" aria-live="polite"></div>
+    </section>
+    <footer><div><strong>Mi Filmoteca</strong><p>Proyecto personal, sin fines comerciales.</p></div><div class="credits">Los datos e imágenes proceden de <a href="https://www.themoviedb.org/" target="_blank" rel="noopener"><img class="tmdb-logo" src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_square_2-d537fb228cf3ded904ef09b136fe3fec72548ebc1fea3fbbd1ad9e36364db38b.svg" alt="TMDB" loading="lazy" /></a>. This product uses the TMDB API but is not endorsed or certified by TMDB. <a href="https://www.themoviedb.org/about/logos-attribution" target="_blank" rel="noopener">Créditos y atribución</a>.</div></footer>
+  </main>
+  <button id="mobile-add" class="fab" type="button" aria-label="Añadir película">+</button>
+</div>
+<dialog id="movie-dialog" aria-labelledby="movie-dialog-title">
+  <form id="movie-form" class="dialog-inner">
+    <div class="dialog-heading"><div><p class="eyebrow">TU FILMOTECA</p><h2 id="movie-dialog-title">Añadir película</h2></div><button type="button" id="movie-close" class="icon-btn" aria-label="Cerrar">✕</button></div>
+    <div class="movie-form-body">
+      <label for="movie-search">Buscar película en TMDB</label>
+      <div class="lookup-line"><input id="movie-search" type="search" placeholder="Ej. Interestelar, Scream, Titanic…" maxlength="100" autocomplete="off" /><button id="search-btn" class="btn" type="button">Buscar</button></div>
+      <div id="search-status" class="microcopy">Busca por título y selecciona una película para completar el póster y su estreno.</div>
+      <div id="movie-results" class="search-results" aria-live="polite"></div>
+      <div class="selected-movie"><div id="poster-preview" class="poster-preview"><span>🎞️</span></div><div class="selected-fields"><label for="movie-title">Título</label><input id="movie-title" placeholder="Título de la película" maxlength="250" required /><div class="two-cols"><div><label for="movie-release">Año de estreno</label><input id="movie-release" type="number" min="1880" max="2200" placeholder="Año"></div><div><label for="movie-genre">Género principal</label><select id="movie-genre" required></select></div></div><div id="movie-source" class="microcopy">Puedes añadir manualmente una película si no aparece en TMDB.</div></div></div>
+      <div class="states-group"><p class="state-title">Estado de la película</p><label class="toggle-row"><span><strong>Por ver</strong><small>Marcado = pendiente · Desmarcado = vista</small></span><input id="movie-pending" type="checkbox" role="switch" /></label><label class="toggle-row" id="home-row"><span><strong>Vista en casa</strong><small>Marcado = casa · Desmarcado = cine</small></span><input id="movie-home" type="checkbox" role="switch" /></label><div id="watched-date-field"><label for="movie-date">Fecha en que la viste</label><input id="movie-date" type="date" /><p class="microcopy">Día, mes y año. No se guarda ninguna hora.</p></div></div>
+      <p id="movie-error" class="form-message error" role="alert"></p>
+    </div>
+    <div class="dialog-actions"><button id="movie-delete" type="button" class="btn delete-btn" hidden>Eliminar</button><span class="flex-space"></span><button type="button" id="movie-cancel" class="btn ghost">Cancelar</button><button id="movie-save" type="submit" class="btn primary">Guardar película</button></div>
+  </form>
+</dialog>
+<dialog id="password-dialog" class="small-dialog"><form id="password-form" class="dialog-inner"><div class="dialog-heading"><h2>Cambiar contraseña</h2></div><div class="movie-form-body"><label for="new-password">Nueva contraseña</label><input type="password" id="new-password" required minlength="6" autocomplete="new-password" /><p class="microcopy">Abriste el enlace de recuperación enviado por Supabase.</p></div><div class="dialog-actions"><button class="btn primary full" type="submit">Actualizar contraseña</button></div></form></dialog>
+</body>
+</html>
