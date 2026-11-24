@@ -4,6 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#0d1018" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="./assets/icon-180.png" />
   <meta name="description" content="Tu filmoteca personal. Guarda las películas que viste y las que quieres ver, desde cualquier dispositivo." />
   <title>Mi Filmoteca · Tu cine, tu historia</title>
   <link rel="manifest" href="./manifest.webmanifest" />
@@ -54,7 +57,6 @@
     <button id="password-help" class="link-btn" type="button">¿Olvidaste tu contraseña?</button>
     <p id="auth-message" class="form-message" role="status" aria-live="polite"></p>
     <p class="auth-small">Tus películas son privadas: otras cuentas no pueden verlas ni modificarlas.</p>
-    <p class="auth-small"><a href="./privacy.html" target="_blank" rel="noopener">Política de privacidad</a> · <a href="./terms.html" target="_blank" rel="noopener">Términos de uso</a></p>
   </div>
 </div>
 <div id="app-view" class="shell" hidden>
@@ -69,6 +71,11 @@
       <button type="button" data-view="pending" class="nav-btn"><span>◷</span> Por ver</button>
       <button type="button" data-view="home" class="nav-btn"><span>⌂</span> Vistas en casa</button>
       <button type="button" data-view="cinema" class="nav-btn"><span>▣</span> Vistas en cine</button>
+      <div class="nav-divider"></div>
+      <button type="button" data-feature="compare" class="nav-btn"><span>⇄</span> Comparar con amigos <span id="request-count" class="nav-count" hidden></span></button>
+      <button type="button" data-feature="stats" class="nav-btn"><span>▥</span> Estadísticas</button>
+      <button type="button" data-feature="profile" class="nav-btn"><span>◉</span> Mi perfil</button>
+      <button type="button" data-feature="backup" class="nav-btn"><span>⇩</span> Respaldos e instalación</button>
     </nav>
     <div class="sidebar-foot">
       <div class="profile"><span class="avatar">◉</span><div class="profile-text"><strong>Mi cuenta</strong><span id="user-email">—</span></div></div>
@@ -77,18 +84,61 @@
   </aside>
   <main class="main-content">
     <div class="top-line"><div class="eyebrow">MI FILMOTECA / <span id="view-label">MI COLECCIÓN</span></div><span class="connected-dot"><i></i> Sincronización en la nube</span></div>
-    <div class="hero"><div><h1>Tu cine, <em>tu historia.</em></h1><p>Una película a la vez, año tras año. Solo tú decides qué forma parte de tu colección.</p></div><button id="add-open" type="button" class="btn primary big">+ Añadir película</button></div>
-    <div class="stat-grid">
+    <div class="hero" id="hero-section"><div><h1>Tu cine, <em>tu historia.</em></h1><p>Una película a la vez, año tras año. Solo tú decides qué forma parte de tu colección.</p></div><button id="add-open" type="button" class="btn primary big">+ Añadir película</button></div>
+    <div class="stat-grid" id="stats-summary">
       <div class="stat-card"><span>En tu colección</span><strong id="stat-all">0</strong><small>Películas registradas</small></div>
       <div class="stat-card"><span>Vistas</span><strong id="stat-seen">0</strong><small>Terminadas</small></div>
       <div class="stat-card"><span>Por ver</span><strong id="stat-pending">0</strong><small>Para más adelante</small></div>
       <div class="stat-card"><span>Casa / Cine</span><strong id="stat-location">0 / 0</strong><small>Películas vistas</small></div>
     </div>
-    <section class="content-section">
+    <section class="content-section" id="collection-section">
       <div class="section-title"><div><h2 id="collection-title">Todas tus películas</h2><p id="collection-subtitle">Aquí aparecerán tus registros.</p></div><div class="view-switch"><button id="group-years" class="active" type="button">Por años</button><button id="group-genres" type="button">Por géneros</button></div></div>
       <div class="filters"><label class="search-filter"><span aria-hidden="true">⌕</span><input id="filter-q" placeholder="Buscar entre tus películas…" autocomplete="off" aria-label="Buscar en mi filmoteca"></label><select id="filter-year" aria-label="Filtrar por año"><option value="all">Todos los años</option></select><select id="filter-genre" aria-label="Filtrar por género"><option value="all">Todos los géneros</option></select><select id="sort" aria-label="Ordenar películas"><option value="recent">Más recientes primero</option><option value="watch-old">Fecha vista: más antiguas</option><option value="release">Año de estreno</option><option value="az">Título A-Z</option></select></div>
       <div id="loading" class="muted loading">Cargando tu filmoteca…</div>
       <div id="collection" aria-live="polite"></div>
+    </section>
+
+    <section id="feature-page" class="content-section feature-page" hidden>
+      <div id="feature-profile" class="feature-panel" hidden>
+        <div class="feature-heading"><div><p class="eyebrow">TU IDENTIDAD EN MI FILMOTECA</p><h2>Mi perfil</h2><p>Elige un nombre de usuario para que tus amigos puedan encontrarte. Tu correo nunca será público.</p></div></div>
+        <form id="profile-form" class="feature-card profile-form">
+          <div class="profile-avatar-preview" id="profile-avatar-preview">🎬</div>
+          <div class="form-stack"><label for="profile-name">Nombre a mostrar</label><input id="profile-name" required maxlength="40" placeholder="Ej. Cinefilo" />
+          <label for="profile-username">Nombre de usuario único</label><input id="profile-username" required minlength="3" maxlength="24" pattern="[a-z0-9_]{3,24}" placeholder="ej. cinefilo_24" autocapitalize="off" autocomplete="off" />
+          <p class="microcopy">Solo letras minúsculas, números y guion bajo. Puedes compartir tu @usuario.</p>
+          <label for="profile-avatar">Avatar</label><select id="profile-avatar"><option>🎬</option><option>🍿</option><option>🎞️</option><option>📽️</option><option>🌙</option><option>⭐</option><option>👾</option><option>🦖</option><option>🎥</option><option>🧙</option><option>👻</option><option>🚀</option></select>
+          <label class="check-line"><input type="checkbox" id="profile-discoverable"> Permitir que me encuentren buscando mi @usuario</label>
+          <p class="microcopy">Si no activas esto, nadie podrá enviarte nuevas solicitudes de comparación.</p>
+          <button class="btn primary" type="submit" id="profile-save">Guardar mi perfil</button><p id="profile-message" class="form-message" role="status"></p></div>
+        </form>
+      </div>
+      <div id="feature-stats" class="feature-panel" hidden>
+        <div class="feature-heading"><div><p class="eyebrow">LOS NÚMEROS DE TU CINE</p><h2>Estadísticas</h2><p>Solo tu colección. Las películas pendientes no cuentan como vistas.</p></div></div>
+        <div id="stats-detail" class="stat-details"></div>
+      </div>
+      <div id="feature-compare" class="feature-panel" hidden>
+        <div class="feature-heading"><div><p class="eyebrow">PRIVACIDAD POR INVITACIÓN</p><h2>Comparar con un amigo</h2><p>Se necesita una <strong>solicitud nueva y aceptada cada vez</strong>. Las invitaciones caducan en 24 h y el acceso concedido dura hasta 60 minutos, o menos si cualquiera lo cierra.</p></div></div>
+        <div class="feature-card compare-request">
+          <h3>Enviar una solicitud</h3>
+          <form id="compare-search-form" class="compare-search-row">
+            <label for="compare-username" class="sr-only">Nombre de usuario exacto</label><input id="compare-username" placeholder="@nombre_de_usuario" autocomplete="off" spellcheck="false" maxlength="24" required />
+            <button class="btn" type="submit" id="compare-search-btn">Buscar usuario</button>
+          </form>
+          <div id="compare-search-result" class="compare-search-result muted">Escribe el @usuario exacto de tu amigo. Solo se pueden encontrar perfiles que hayan activado esa opción.</div>
+        </div>
+        <div class="feature-card compare-invitations"><div class="section-inline"><h3>Solicitudes</h3><button id="refresh-requests" type="button" class="btn ghost">Actualizar</button></div><div id="compare-inbox" class="invite-list"><p class="muted">Aquí aparecerán tus invitaciones.</p></div></div>
+        <div class="feature-card compare-output" id="compare-output" hidden>
+          <div class="section-inline"><div><p class="eyebrow">COMPARACIÓN TEMPORAL</p><h3 id="compare-title">Historiales</h3></div><button id="compare-close" type="button" class="btn delete-btn">Finalizar y revocar acceso</button></div>
+          <p class="muted">Se incluyen únicamente las películas marcadas como vistas. <strong>Las coincidencias se resaltan</strong>; las demás se muestran sin destacar.</p>
+          <div id="compare-summary" class="compare-mini-summary"></div>
+          <div id="compare-movies" class="compare-movie-grid"></div>
+        </div>
+      </div>
+      <div id="feature-backup" class="feature-panel" hidden>
+        <div class="feature-heading"><div><p class="eyebrow">TUS DATOS Y TU CELULAR</p><h2>Respaldos e instalación</h2><p>Exporta tus registros cuando quieras. Tu colección continuará sincronizándose en Supabase.</p></div></div>
+        <div class="feature-card"><h3>Descargar mi colección</h3><p>Estos respaldos solo incluyen tus películas, nunca las de otras personas ni las comparaciones temporales.</p><div class="button-row"><button id="export-json" type="button" class="btn primary">↓ Descargar JSON</button><button id="export-csv" type="button" class="btn">↓ Descargar CSV</button></div></div>
+        <div class="feature-card"><h3>Instalar Mi Filmoteca en tu celular</h3><p id="install-hint">Abre esta web en tu navegador para añadirla a tu pantalla de inicio.</p><div class="button-row"><button type="button" class="btn primary" id="install-app" hidden>Instalar aplicación</button></div><p class="microcopy">En Android, abre el menú de Chrome → «Instalar aplicación» o «Añadir a pantalla de inicio». En iPhone, abre en Safari → Compartir → «Añadir a pantalla de inicio».</p><p class="microcopy">Necesita internet para sincronizar las películas y buscar pósters.</p></div>
+      </div>
     </section>
     <footer><div><strong>Mi Filmoteca</strong><p>Proyecto personal, sin fines comerciales.</p></div><div class="credits">Los datos e imágenes proceden de <a href="https://www.themoviedb.org/" target="_blank" rel="noopener"><img class="tmdb-logo" src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_square_2-d537fb228cf3ded904ef09b136fe3fec72548ebc1fea3fbbd1ad9e36364db38b.svg" alt="TMDB" loading="lazy" /></a>. This product uses the TMDB API but is not endorsed or certified by TMDB. <a href="https://www.themoviedb.org/about/logos-attribution" target="_blank" rel="noopener">Créditos y atribución</a>.</div></footer>
   </main>

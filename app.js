@@ -1,4 +1,4 @@
-/* Mi Filmoteca 5.0 — cliente web, sin claves privadas en el navegador. */
+/* Mi Filmoteca 6.0 — cliente web, sin claves privadas en el navegador. */
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
@@ -77,11 +77,12 @@
   async function updateSession(user){
     if(user?.id===state.loadedUserId)return;
     state.user=user||null;
-    if(!user){state.loadedUserId=null;state.movies=[];show('auth-view');return;}
+    if(!user){state.loadedUserId=null;state.movies=[];state.profile=null;state.invites=[];closeComparePanel();show('auth-view');return;}
     state.loadedUserId=user.id;
     $('user-email').textContent=user.email||'Mi cuenta';
     show('app-view');
     await loadMovies();
+    await loadProfile();
   }
 
   async function loadMovies(){
@@ -91,7 +92,7 @@
       const {data,error}=await state.sb.from('filmoteca_movies').select('id,user_id,tmdb_id,title,release_year,genre,poster_path,to_watch,watched_at_home,watched_date,created_at,updated_at').order('created_at',{ascending:false}).limit(2000);
       if(error)throw error;
       state.movies=Array.isArray(data)?data:[];
-      render();
+      render(); if(state.feature==='stats')renderStatistics();
     }catch(error){banner('No se pudo cargar tu colección: '+errText(error),8000);state.movies=[];render();}
     finally{$('loading').hidden=true;}
   }
@@ -280,6 +281,217 @@
     if(error){banner(errText(error));render();return;}
     await loadMovies();
   }
+  // Mi Filmoteca 6.0: identidad, estadísticas, respaldos y comparaciones con consentimiento.
+  Object.assign(state,{feature:null,profile:null,invites:[],foundUser:null,activeComparison:null,installPrompt:null});
+
+  function setFeature(feature){
+    state.feature=feature;
+    const inCollection=!feature;
+    $('hero-section').hidden=!inCollection;
+    $('stats-summary').hidden=!inCollection;
+    $('collection-section').hidden=!inCollection;
+    $('feature-page').hidden=inCollection;
+    for(const name of ['profile','stats','compare','backup'])$('feature-'+name).hidden=name!==feature;
+    document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('selected',!feature&&b.dataset.view===state.view));
+    document.querySelectorAll('[data-feature]').forEach(b=>b.classList.toggle('selected',b.dataset.feature===feature));
+    $('view-label').textContent=feature?({profile:'MI PERFIL',stats:'ESTADÍSTICAS',compare:'COMPARAR CON',backup:'RESPALDOS E INSTALACIÓN'}[feature]):'MI COLECCIÓN';
+    $('mobile-add').hidden=!!feature;
+    if(feature==='stats')renderStatistics();
+    if(feature==='compare')refreshInvitations();
+  }
+  async function loadProfile(){
+    if(!state.user)return;
+    const {data,error}=await state.sb.from('filmoteca_profiles').select('user_id,username,display_name,avatar_emoji,discoverable').eq('user_id',state.user.id).maybeSingle();
+    if(error){banner('Necesitamos aplicar upgrade_6_0.sql en Supabase: '+errText(error),8500);return;}
+    state.profile=data||null;
+    $('profile-name').value=data?.display_name||state.user.user_metadata?.full_name||'';
+    $('profile-username').value=data?.username||'';
+    $('profile-avatar').value=data?.avatar_emoji||'🎬';
+    $('profile-avatar-preview').textContent=data?.avatar_emoji||'🎬';
+    $('profile-discoverable').checked=!!data?.discoverable;
+    document.querySelector('.profile .avatar').textContent=data?.avatar_emoji||'◉';
+    document.querySelector('.profile-text strong').textContent=data?.display_name||'Mi cuenta';
+    if(!data){setFeature('profile');banner('Configura tu @usuario para poder comparar películas con amigos.',6500);}
+    else loadInvitationsBadge();
+  }
+  async function saveProfile(e){
+    e.preventDefault();if(!state.user)return;
+    const username=$('profile-username').value.toLowerCase().trim();
+    const name=$('profile-name').value.trim();
+    if(!/^[a-z0-9_]{3,24}$/.test(username)){ $('profile-message').textContent='El usuario debe tener 3–24 caracteres: a-z, 0-9 o _.';return;}
+    if(!name||name.length>40){$('profile-message').textContent='Introduce un nombre de 1–40 caracteres.';return;}
+    const avatar=$('profile-avatar').value;
+    const body={user_id:state.user.id,username,display_name:name,avatar_emoji:avatar,discoverable:$('profile-discoverable').checked,updated_at:new Date().toISOString()};
+    $('profile-save').disabled=true;
+    try{
+      const {error}=await state.sb.from('filmoteca_profiles').upsert(body,{onConflict:'user_id'});
+      if(error)throw error;
+      state.profile=body;
+      $('profile-message').textContent='Perfil guardado correctamente.';
+      document.querySelector('.profile .avatar').textContent=avatar;
+      document.querySelector('.profile-text strong').textContent=name;
+      banner('Tu perfil está listo.');
+    }catch(error){$('profile-message').textContent=/duplicate key|23505/i.test(errText(error))?'Ese @usuario ya está ocupado. Elige otro.':errText(error);}
+    finally{$('profile-save').disabled=false;}
+  }
+  function countsFor(values,key){const a=new Map();for(const m of values){const label=key(m);if(!label)continue;a.set(label,(a.get(label)||0)+1);}return [...a.entries()].sort((x,y)=>y[1]-x[1]||String(x[0]).localeCompare(String(y[0]),'es'));}
+  function chartCard(title,items,maxBars=12){
+    const card=document.createElement('div');card.className='data-card';
+    const h=document.createElement('h3');h.textContent=title;card.appendChild(h);
+    if(!items.length){const p=document.createElement('p');p.className='muted';p.textContent='Aún no hay datos.';card.appendChild(p);return card;}
+    const max=Math.max(1,...items.map(x=>x[1]));
+    items.slice(0,maxBars).forEach(([name,count])=>{
+      const row=document.createElement('div');row.className='data-row';
+      row.innerHTML=`<div class="data-row-label"><span>${safe(name)}</span><strong>${count}</strong></div><div class="data-bar"><span style="width:${Math.round(count/max*100)}%"></span></div>`;
+      card.appendChild(row);
+    });return card;
+  }
+  function renderStatistics(){
+    const seen=state.movies.filter(m=>!m.to_watch);
+    const el=$('stats-detail');el.innerHTML='';
+    const years=countsFor(seen,m=>watchYear(m)||'Sin fecha');
+    const genres=countsFor(seen,m=>m.genre||'Sin clasificar');
+    el.appendChild(chartCard('Vistas por año',years,18));
+    el.appendChild(chartCard('Vistas por género principal',genres,20));
+    el.appendChild(chartCard('Lugar de visualización',[['En casa',seen.filter(m=>m.watched_at_home).length],['En cine',seen.filter(m=>!m.watched_at_home).length]]));
+    el.appendChild(chartCard('Tu colección',[['Vistas',seen.length],['Por ver',state.movies.length-seen.length]]));
+  }
+  function downloadContent(content,filename,type){
+    const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');
+    a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);
+  }
+  const backupColumns=['tmdb_id','title','release_year','genre','poster_path','to_watch','watched_at_home','watched_date'];
+  function exportBackup(format){
+    const rows=state.movies.map(m=>Object.fromEntries(backupColumns.map(k=>[k,m[k]??null])));
+    const stamp=today(),name=`mi-filmoteca-${stamp}`;
+    if(format==='json'){
+      downloadContent(JSON.stringify({format:'mi-filmoteca',version:6,exported_at:new Date().toISOString(),movies:rows},null,2),name+'.json','application/json;charset=utf-8');
+    }else{
+      // Impide la ejecución de fórmulas al abrir CSV en una hoja de cálculo.
+      const cell=x=>{let v=x==null?'':String(x);if(/^[\s\t\r]*[=+\-@]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"';};
+      downloadContent('\ufeff'+[backupColumns.join(','),...rows.map(r=>backupColumns.map(k=>cell(r[k])).join(','))].join('\r\n'),name+'.csv','text/csv;charset=utf-8');
+    }
+    banner('Descargaste tu respaldo de '+rows.length+' películas.');
+  }
+
+  async function searchCompareUser(e){
+    e.preventDefault();
+    const username=$('compare-username').value.replace(/^@/,'').toLowerCase().trim();
+    const result=$('compare-search-result');state.foundUser=null;
+    if(!/^[a-z0-9_]{3,24}$/.test(username)){result.textContent='Usa el @usuario exacto (3–24 letras, números o guion bajo).';return;}
+    if(!state.profile){result.textContent='Primero crea tu perfil en «Mi perfil».';return;}
+    $('compare-search-btn').disabled=true;result.textContent='Buscando usuario…';
+    try{
+      const {data,error}=await state.sb.rpc('filmoteca_lookup_user',{p_username:username});
+      if(error)throw error;
+      const u=data?.[0];
+      if(!u){result.textContent='No aparece ese usuario. Comprueba el nombre y si permite búsquedas.';return;}
+      state.foundUser=u;
+      result.innerHTML=`<div class="found-profile"><span class="invite-avatar">${safe(u.avatar_emoji||'🎬')}</span><div class="invite-description"><strong>${safe(u.display_name)}</strong><small>@${safe(u.username)}</small></div><button class="btn primary" type="button" id="send-invite">Enviar solicitud</button></div>`;
+      $('send-invite').onclick=sendCompareRequest;
+    }catch(error){result.textContent='Error buscando usuario: '+errText(error);}
+    finally{$('compare-search-btn').disabled=false;}
+  }
+  async function sendCompareRequest(){
+    const u=state.foundUser;if(!u)return;
+    const btn=$('send-invite');btn.disabled=true;
+    try{
+      const {error}=await state.sb.rpc('filmoteca_create_invitation',{p_username:u.username});
+      if(error)throw error;
+      $('compare-search-result').textContent='Solicitud enviada. Tu amigo debe aceptarla desde su Filmoteca.';
+      state.foundUser=null;await refreshInvitations();
+    }catch(error){banner(errText(error),7000);btn.disabled=false;}
+  }
+  async function loadInvitationsBadge(){
+    if(!state.user)return;
+    const {data,error}=await state.sb.rpc('filmoteca_list_invitations');
+    if(error)return;
+    state.invites=Array.isArray(data)?data:[];
+    const count=state.invites.filter(r=>r.status==='pending'&&r.direction==='incoming').length;
+    $('request-count').hidden=count===0;$('request-count').textContent=String(count);
+    if(state.feature==='compare')drawInvitations();
+  }
+  async function refreshInvitations(){
+    if(!state.user)return;
+    const el=$('compare-inbox');el.textContent='Actualizando solicitudes…';
+    try{const {data,error}=await state.sb.rpc('filmoteca_list_invitations');if(error)throw error;
+      state.invites=Array.isArray(data)?data:[];
+      const count=state.invites.filter(r=>r.status==='pending'&&r.direction==='incoming').length;
+      $('request-count').hidden=count===0;$('request-count').textContent=String(count);
+      const active=state.activeComparison;
+      if(active&&!state.invites.some(r=>r.request_id===active.id&&r.status==='accepted'))closeComparePanel();
+      drawInvitations();
+    }catch(error){el.textContent='No se pudieron cargar las solicitudes: '+errText(error);}
+  }
+  function drawInvitations(){
+    const el=$('compare-inbox');el.innerHTML='';
+    if(!state.invites.length){el.innerHTML='<p class="muted">Aún no hay solicitudes. Puedes buscar a un amigo por su @usuario.</p>';return;}
+    const labels={pending:'Pendiente',accepted:'Aceptada (acceso temporal)',declined:'Rechazada',closed:'Finalizada',expired:'Caducada'};
+    for(const r of state.invites){
+      const entry=document.createElement('div');entry.className='invite-item';
+      const side=r.direction==='incoming'?'Recibida de':'Enviada a';
+      entry.innerHTML=`<div class="invite-avatar">${safe(r.other_avatar||'🎬')}</div><div class="invite-description"><strong>${safe(r.other_display_name||r.other_username||'Usuario')}</strong><small>${safe(side)} @${safe(r.other_username||'sin_usuario')} · ${safe(labels[r.status]||r.status)}</small></div><div class="invite-actions"></div>`;
+      const actions=entry.querySelector('.invite-actions');
+      function addAction(label,fn,primary=false){const b=document.createElement('button');b.type='button';b.className='btn'+(primary?' primary':'');b.textContent=label;b.onclick=fn;actions.appendChild(b);}
+      if(r.status==='pending'&&r.direction==='incoming'){
+        addAction('Aceptar',()=>respondInvitation(r.request_id,true),true);addAction('Rechazar',()=>respondInvitation(r.request_id,false));
+      }
+      if(r.status==='accepted')addAction('Comparar historiales',()=>openComparison(r),true);
+      if(['pending','accepted'].includes(r.status))addAction('Finalizar',()=>endInvitation(r.request_id));
+      el.appendChild(entry);
+    }
+  }
+  async function respondInvitation(id,accept){
+    if(accept&&!confirm('¿Permitir comparar temporalmente tus películas vistas con esta cuenta? Podrá ver tus títulos, fechas y si los viste en casa o cine durante un máximo de 60 minutos.'))return;
+    try{const {error}=await state.sb.rpc('filmoteca_reply_invitation',{p_request_id:id,p_accept:accept});if(error)throw error;
+      banner(accept?'Solicitud aceptada. El acceso durará 60 minutos como máximo.':'Solicitud rechazada.');await refreshInvitations();
+      if(accept){const r=state.invites.find(x=>x.request_id===id);if(r)await openComparison(r);}
+    }catch(error){banner(errText(error),7000);}
+  }
+  async function endInvitation(id){
+    if(!confirm('¿Finalizar esta solicitud y revocar el acceso a los historiales?'))return;
+    try{const {error}=await state.sb.rpc('filmoteca_close_invitation',{p_request_id:id});if(error)throw error;
+      if(state.activeComparison?.id===id)closeComparePanel();
+      banner('Acceso revocado. Para comparar otra vez necesitarán una solicitud nueva.');await refreshInvitations();
+    }catch(error){banner(errText(error),7000);}
+  }
+  function closeComparePanel(){state.activeComparison=null;$('compare-output').hidden=true;$('compare-movies').innerHTML='';$('compare-summary').innerHTML='';}
+  async function openComparison(r){
+    const out=$('compare-output'),gallery=$('compare-movies');out.hidden=false;gallery.textContent='Comprobando el permiso y cargando películas…';
+    try{
+      const {data,error}=await state.sb.rpc('filmoteca_read_comparison',{p_request_id:r.request_id});if(error)throw error;
+      state.activeComparison={id:r.request_id,expires:r.accepted_until};
+      $('compare-title').textContent='Tú y '+(r.other_display_name||r.other_username);
+      const movies=Array.isArray(data)?data:[];
+      const matches=movies.filter(m=>m.is_match).length,onlyMe=movies.filter(m=>m.mine&&!m.theirs).length,onlyThem=movies.filter(m=>m.theirs&&!m.mine).length;
+      $('compare-summary').innerHTML=`<div class="mini-stat"><strong>${matches}</strong><span>Coincidencias</span></div><div class="mini-stat"><strong>${onlyMe}</strong><span>Solo tú</span></div><div class="mini-stat"><strong>${onlyThem}</strong><span>Solo tu amigo</span></div>`;
+      gallery.innerHTML='';
+      if(!movies.length){gallery.textContent='Aún no hay películas vistas en ninguno de los dos historiales.';return;}
+      for(const m of movies){
+        const item=document.createElement('div');item.className='compare-movie'+(m.is_match?' matched':'');
+        const poster=posterURL(m.movie_poster_path,'w185');
+        const who=m.is_match?'✓ La vieron ambos':m.mine?'Solo tú':'Solo '+(r.other_display_name||'tu amigo');
+        let details='';
+        if(m.mine)details+='Tú: '+fullDate(m.my_watched_date)+' · '+(m.my_at_home?'Casa':'Cine');
+        if(m.theirs)details+=(details?' | ':'')+'Amigo: '+fullDate(m.their_watched_date)+' · '+(m.their_at_home?'Casa':'Cine');
+        item.innerHTML=(poster?`<img src="${poster}" alt="" loading="lazy" decoding="async">`:'<div class="fallback">🎞️</div>')+
+          `<strong>${safe(m.movie_title)}</strong><small>${m.movie_release_year||'Estreno desconocido'} · ${safe(m.movie_genre||'Sin clasificar')}</small><small class="${m.is_match?'match-flag':''}">${safe(who)}</small><small>${safe(details)}</small>`;
+        gallery.appendChild(item);
+      }
+      out.scrollIntoView({behavior:'smooth',block:'start'});
+    }catch(error){gallery.textContent='No se pudo mostrar la comparación: '+errText(error);state.activeComparison=null;}
+  }
+  function configurePWA(){
+    window.addEventListener('beforeinstallprompt',event=>{
+      event.preventDefault();state.installPrompt=event;$('install-app').hidden=false;
+      $('install-hint').textContent='Tu navegador permite instalar Mi Filmoteca directamente.';
+    });
+    window.addEventListener('appinstalled',()=>{$('install-app').hidden=true;state.installPrompt=null;banner('Mi Filmoteca se instaló correctamente.');});
+    $('install-app').onclick=async()=>{if(!state.installPrompt)return;state.installPrompt.prompt();
+      await state.installPrompt.userChoice;state.installPrompt=null;$('install-app').hidden=true;
+    };
+  }
+
   async function init(){
     const cfg=window.FILMOTECA_CONFIG||{};
     const url=String(cfg.supabaseUrl||'');const pub=String(cfg.supabasePublishableKey||'');
@@ -288,6 +500,21 @@
     state.sb=window.supabase.createClient(url,pub,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:true}});
     for(const g of GENRES){const o=document.createElement('option');o.value=g;o.textContent=g;$('movie-genre').appendChild(o);}
     $('movie-date').max=today();
+    $('profile-form').onsubmit=saveProfile;
+    $('profile-avatar').onchange=()=>{$('profile-avatar-preview').textContent=$('profile-avatar').value;};
+    $('compare-search-form').onsubmit=searchCompareUser;
+    $('refresh-requests').onclick=refreshInvitations;
+    $('compare-close').onclick=()=>{if(state.activeComparison)endInvitation(state.activeComparison.id);};
+    $('export-json').onclick=()=>exportBackup('json');
+    $('export-csv').onclick=()=>exportBackup('csv');
+    document.querySelectorAll('[data-feature]').forEach(b=>b.onclick=()=>setFeature(b.dataset.feature));
+    configurePWA();
+    setInterval(()=>{
+      if(state.activeComparison?.expires && Date.parse(state.activeComparison.expires)<=Date.now()){
+        closeComparePanel();banner('La comparación caducó. Solicita una nueva para volver a ver ambos historiales.');
+      }
+      if(state.user&&state.feature==='compare'&&!document.hidden)refreshInvitations();
+    },30000);
     $('tab-signin').onclick=()=>setAuthMode('signin');$('tab-signup').onclick=()=>setAuthMode('signup');
     $('auth-form').onsubmit=submitAuth;$('auth-google').onclick=signInGoogle;$('password-help').onclick=recoverPassword;
     $('signout').onclick=async()=>{const {error}=await state.sb.auth.signOut();if(error)banner(errText(error));};
@@ -302,7 +529,7 @@
     $('collection').onclick=e=>{const b=e.target.closest('[data-edit]');if(b)openMovie(b.dataset.edit);};
     $('collection').addEventListener('change',toggleCard);
     $('movie-dialog').onclick=e=>{if(e.target===$('movie-dialog'))$('movie-dialog').close();};
-    document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{state.view=b.dataset.view;$('filter-q').value='';$('filter-year').value='all';$('filter-genre').value='all';render();});
+    document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{setFeature(null);state.view=b.dataset.view;$('filter-q').value='';$('filter-year').value='all';$('filter-genre').value='all';render();});
     $('group-years').onclick=()=>{state.group='years';render();};$('group-genres').onclick=()=>{state.group='genres';render();};
     for(const id of ['filter-q','filter-year','filter-genre','sort'])$(id).addEventListener(id==='filter-q'?'input':'change',render);
     $('password-form').onsubmit=async e=>{e.preventDefault();const password=$('new-password').value;const {error}=await state.sb.auth.updateUser({password});if(error)banner(errText(error));else{$('password-dialog').close();banner('Contraseña actualizada');}};
