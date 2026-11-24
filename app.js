@@ -180,7 +180,25 @@
       drawSearchResults();
     }catch(error){
       if(seq!==state.searchSeq)return;
-      $('search-status').textContent='La búsqueda automática no está disponible: '+errText(error)+'. Puedes registrar la película manualmente.';
+      // Supabase FunctionsHttpError guarda la respuesta HTTP real en error.context.
+      // Mostrar el código ayuda a diferenciar sesión, permisos y errores de TMDB.
+      const response=error?.context;
+      const code=Number(response?.status||error?.status)||null;
+      let serverError='';
+      if(response && typeof response.clone==='function'){
+        try{
+          const payload=await response.clone().json();
+          if(typeof payload?.error==='string')serverError=payload.error.slice(0,140);
+        }catch{}
+      }
+      const diagnostic=code?' (HTTP '+code+')':'';
+      let explanation=serverError||errText(error);
+      if(code===401)explanation='Sesión rechazada. Cierra sesión e inicia con Google nuevamente.';
+      else if(code===403)explanation='Acceso denegado. Revisa los permisos de la función.';
+      else if(code===429)explanation='Demasiadas consultas. Intenta de nuevo más tarde.';
+      else if(code>=500 && !serverError)explanation='Error del servidor o de TMDB. Revisa los registros de la función en Supabase.';
+      $('search-status').textContent='No se pudo buscar'+diagnostic+': '+explanation+' Puedes registrar la película manualmente.';
+      console.warn('Fallo tmdb-search:',{httpStatus:code,serverMessage:serverError});
     }finally{if(seq===state.searchSeq)$('search-btn').disabled=false;}
   }
   function drawSearchResults(){
